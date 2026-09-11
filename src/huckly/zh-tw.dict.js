@@ -398,6 +398,10 @@ export const ZH_TW = Object.freeze({
   'VOICE SYSTEM ERROR': '語音系統錯誤',
   'DISMISS': '關閉',
   'Check microphone permission and network access, then try again.': '請檢查麥克風權限與網路連線後再試一次。',
+  // Location search feedback (locationStatus.js default label, ui.js toasts); display-only.
+  'Searched location': '搜尋結果',
+  'Location not found': '找不到這個地點',
+  'Search failed': '搜尋失敗',
   // Panel titles: ui.js only reads them to build "Expand <title>" tooltips.
   'DATA LAYERS': '資料圖層',
   'VISUAL PRESETS': '視覺預設',

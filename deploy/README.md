@@ -146,7 +146,14 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 - 攝影機朝向（heading）只依行車方向 N/S/E/W 粗估，投影貼圖可能偏移。
 - 臺北市交通局 CCTV 影像需簽約申請，未納入。
 
-## 五、中文介面
+## 五、地點搜尋
+
+- 上游搜尋列需要 `GOOGLE_MAPS_API_KEY`，沒有金鑰時會直接顯示「Search failed」。
+- 本 fork 在沒有 Google 金鑰時改用 OpenStreetMap Nominatim（`src/huckly/geocode.js`），不需金鑰，中文地名可查。
+- Nominatim 使用政策：每秒最多 1 次查詢（模組內已限速）、資料 © OpenStreetMap contributors（ODbL）。
+- 設了 Google 金鑰就自動改回上游的 Google 地理編碼。
+
+## 六、中文介面
 
 - 預設正體中文；網址加 `?lang=en` 切回英文（會記住），`?lang=zh-TW` 切回中文。
 - 找未翻譯字串：網址加 `?i18n-debug=1`，操作一輪後在 DevTools console 輸入 `[...hucklyI18n.missing]`，

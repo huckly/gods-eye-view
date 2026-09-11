@@ -17,10 +17,10 @@ const MAX_KEY_LENGTH = 240;
 
 // Elements whose text the app reads back or compares, or that must not change.
 const SKIP_SELECTOR = [
+  // input/textarea are NOT skipped: they have no text-node children and the
+  // overlay never touches .value, so only their placeholder/title get translated.
   'script',
   'style',
-  'textarea',
-  'input',
   'code',
   'pre',
   '[contenteditable]',
