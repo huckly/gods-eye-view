@@ -109,9 +109,12 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 |---|---|
 | 立即更新 | `deploy/update.sh` |
 | 強制重建 | `deploy/update.sh --force` |
-| 看狀態 | `docker compose -f deploy/compose.yaml ps` |
-| 看 log | `docker compose -f deploy/compose.yaml logs --tail 100 gev` |
-| 停止 | `docker compose -f deploy/compose.yaml down` |
+| 看狀態 | `docker inspect -f '{{.State.Health.Status}}' gods-eye-view-gev-1` |
+| 看 log | `docker logs --tail 100 gods-eye-view-gev-1` |
+| 停止 | `docker stop gods-eye-view-gev-1` |
+
+> `docker compose` 的任何子指令（含 `ps`/`logs`/`down`）都會解析 compose.yaml，
+> 沒帶 `GEV_UID`/`GEV_GID` 會直接報錯；上表改用容器名稱避開。不在 docker 群組時前面加 `sudo`。
 
 可調環境變數（compose 執行前設定）：`GEV_PORT`、`GEV_MEM_LIMIT`（預設 2g）、`GEV_CPUS`（1.5）、
 `CCTV_SOURCES_FILE`、`CCTV_FORCE_AUSTIN`（1＝保留內建全球攝影機）、`SNAP_TTL_MS`（≥ 40000）。

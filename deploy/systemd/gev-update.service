@@ -9,5 +9,7 @@ After=network-online.target docker.service
 Type=oneshot
 User=@USER@
 WorkingDirectory=@REPO_DIR@
-ExecStart=@REPO_DIR@/deploy/update.sh
+# Invoke through bash so a checkout that lost the exec bit (e.g. committed from
+# Windows) still runs.
+ExecStart=/usr/bin/env bash @REPO_DIR@/deploy/update.sh
 TimeoutStartSec=15min
