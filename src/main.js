@@ -1,6 +1,8 @@
+import './huckly/i18n.js'; // huckly: zh-TW overlay, must load before the UI builds DOM
 import * as Cesium from 'cesium';
 import { StyleManager } from './ui.js';
 import { flyToAustin } from './camera.js';
+import { HOME, flyToHome } from './huckly/home.js';
 import { DataLayerManager } from './data/manager.js';
 import flightsLayer from './data/flights.js';
 import militaryFlightsLayer from './data/militaryFlights.js';
@@ -195,10 +197,10 @@ async function init() {
     const weatherEffects = null;
     const cockpitCloudEffects = initCockpitCloudEffects(viewer);
 
-    // If no share link state, do default fly-to Austin
+    // If no share link state, do default fly-to (huckly: Taipei, see src/huckly/home.js)
     if (!styleManager.hasShareState) {
-      loaderStatus.textContent = 'Flying to Austin, TX...';
-      flyToAustin(viewer);
+      loaderStatus.textContent = `Flying to ${HOME.label}...`;
+      flyToHome(viewer);
     } else {
       loaderStatus.textContent = 'Restoring shared view...';
     }

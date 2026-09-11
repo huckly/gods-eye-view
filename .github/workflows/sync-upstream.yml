@@ -1,0 +1,95 @@
+# huckly fork: merge bilawalsidhu/gods-eye-view main into this fork's main daily.
+#
+# - main          = upstream + huckly customizations (what gets deployed)
+# - upstream-main = exact mirror of upstream main (for diffing)
+#
+# A merge conflict or failing test/build stops the job before anything is pushed,
+# and GitHub emails the failed scheduled run. Resolve locally:
+#   git fetch upstream && git merge upstream/main && npm test && git push
+#
+# Token: GITHUB_TOKEN cannot push commits that touch .github/workflows/. When
+# upstream changes its own workflows the push fails; add a fine-grained PAT
+# (this repo only: Contents + Workflows read/write) as secret SYNC_TOKEN.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '17 19 * * *' # 03:17 Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'huckly/gods-eye-view'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UPSTREAM_URL: https://github.com/bilawalsidhu/gods-eye-view.git
+      PUPPETEER_SKIP_DOWNLOAD: '1'
+    steps:
+      - name: Check out fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        id: fetch
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already contains upstream $(git rev-parse --short upstream/main)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### New upstream commits"
+              echo '```'
+              git log --oneline HEAD..upstream/main
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Merge upstream
+        if: steps.fetch.outputs.changed == 'true'
+        run: |
+          git config user.name "huckly-sync[bot]"
+          git config user.email "huckly@users.noreply.github.com"
+          if ! git merge --no-edit -m "chore(sync): merge upstream $(git rev-parse --short upstream/main)" upstream/main; then
+            {
+              echo "### Merge conflict"
+              echo '```'
+              git diff --name-only --diff-filter=U
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            git merge --abort
+            exit 1
+          fi
+
+      - name: Use Node.js
+        if: steps.fetch.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+
+      - name: Verify merged tree
+        if: steps.fetch.outputs.changed == 'true'
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Push
+        if: steps.fetch.outputs.changed == 'true'
+        run: |
+          git push origin HEAD:main
+          git push --force origin upstream/main:refs/heads/upstream-main

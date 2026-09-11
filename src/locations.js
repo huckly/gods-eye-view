@@ -105,6 +105,20 @@ export const CITY_POIS = {
       { name: 'Museum of the Future', lat: 25.2197, lon: 55.2806, alt: 350, pitch: -20, heading: 30, buildingHeight: 35 },
     ],
   },
+  // huckly: Taipei city preset (fork customization; keep this block self-contained
+  // so upstream merges only ever touch the surrounding lines).
+  taipei: {
+    name: 'Taipei',
+    groundElevation: 25, // ~8 m basin floor + ~17 m geoid undulation above WGS84
+    viewBounds: { southwest: { lat: 24.96, lng: 121.45 }, northeast: { lat: 25.13, lng: 121.62 } },
+    pois: [
+      { name: 'Taipei 101', lat: 25.0339, lon: 121.5645, alt: 1100, pitch: -18, heading: 200, buildingHeight: 250 },
+      { name: 'Presidential Office Building', lat: 25.0400, lon: 121.5119, alt: 500, pitch: -25, heading: 270, buildingHeight: 30 },
+      { name: 'Chiang Kai-shek Memorial Hall', lat: 25.0346, lon: 121.5218, alt: 600, pitch: -30, heading: 90, buildingHeight: 35 },
+      { name: 'Taipei Songshan Airport', lat: 25.0697, lon: 121.5525, alt: 1500, pitch: -35, heading: 100, buildingHeight: 10 },
+      { name: 'Taipei Main Station', lat: 25.0478, lon: 121.5170, alt: 600, pitch: -28, heading: 0, buildingHeight: 25 },
+    ],
+  },
   dc: {
     name: 'Washington DC',
     groundElevation: 10,

@@ -1,0 +1,54 @@
+# huckly fork: self-host God's Eye View with Docker Compose.
+#
+# Why the checkout is bind-mounted instead of baked into an image:
+#   - Most /api/* proxies only exist on the Vite DEV server (configureServer),
+#     so the app must run `vite`, not `vite preview` or a static build.
+#   - The in-app POWER UP panel writes keys to <repo>/.env via tmp+rename, which
+#     needs the whole directory mounted (a single-file bind mount breaks rename).
+#   - Updates are then just `git pull` + recreate (see deploy/update.sh).
+#
+# Why network_mode: host + HOST=127.0.0.1:
+#   - The key-setup endpoint accepts loopback clients only. Through a Docker
+#     bridge every request arrives from 172.x and POWER UP would be refused.
+#   - Nothing is exposed on the LAN. Reach it with an SSH tunnel:
+#       ssh -L 4173:127.0.0.1:4173 <host>   then open http://localhost:4173
+#
+# Usage (from the repo root):
+#   GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.yaml up -d
+name: gods-eye-view
+
+services:
+  gev:
+    image: node:24.19.0-bookworm-slim
+    user: "${GEV_UID:?set GEV_UID=$(id -u)}:${GEV_GID:?set GEV_GID=$(id -g)}"
+    working_dir: /app
+    network_mode: host
+    init: true
+    restart: unless-stopped
+    entrypoint: ["sh", "/app/deploy/entrypoint.sh"]
+    environment:
+      HOST: 127.0.0.1
+      PORT: ${GEV_PORT:-4173}
+      HOME: /tmp
+      PUPPETEER_SKIP_DOWNLOAD: "1"
+      CCTV_SOURCES_FILE: ${CCTV_SOURCES_FILE:-config/cctv_sources.taiwan.json}
+      # A file pack normally disables the built-in Austin/Caltrans/TfL live packs;
+      # force them back on so Taiwan cameras are added, not substituted.
+      CCTV_FORCE_AUSTIN: ${CCTV_FORCE_AUSTIN:-1}
+      SNAP_PORT: ${SNAP_PORT:-4174}
+      SNAP_TTL_MS: ${SNAP_TTL_MS:-60000}
+    volumes:
+      - ..:/app
+    mem_limit: ${GEV_MEM_LIMIT:-2g}
+    cpus: ${GEV_CPUS:-1.5}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||4173)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

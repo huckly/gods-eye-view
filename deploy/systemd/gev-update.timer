@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily God's Eye View update (after the fork's upstream sync at ~03:17 Taipei)
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Taipei
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
