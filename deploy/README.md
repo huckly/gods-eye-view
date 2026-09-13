@@ -148,10 +148,8 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 
 ## 五、地點搜尋
 
-- 上游搜尋列需要 `GOOGLE_MAPS_API_KEY`，沒有金鑰時會直接顯示「Search failed」。
-- 本 fork 在沒有 Google 金鑰時改用 OpenStreetMap Nominatim（`src/huckly/geocode.js`），不需金鑰，中文地名可查。
-- Nominatim 使用政策：每秒最多 1 次查詢（模組內已限速）、資料 © OpenStreetMap contributors（ODbL）。
-- 設了 Google 金鑰就自動改回上游的 Google 地理編碼。
+- 上游（2026-09 重構後）內建 Google → Photon 兩段式搜尋：有 `GOOGLE_MAPS_API_KEY` 用 Google，沒有就走免金鑰的 Photon（OpenStreetMap 資料）。
+- 本 fork 先前自寫的 Nominatim 備援（`src/huckly/geocode.js`）已隨上游合併移除，不再需要。
 
 ## 六、中文介面
 

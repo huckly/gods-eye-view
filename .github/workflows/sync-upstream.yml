@@ -83,8 +83,11 @@ jobs:
 
       - name: Verify merged tree
         if: steps.fetch.outputs.changed == 'true'
+        # Mirror upstream CI so a pushed merge never fails the fork's own CI.
         run: |
           npm ci
+          npm run format:check
+          npm run check:boundaries
           npm test
           npm run build
 

@@ -153,7 +153,8 @@ export const ZH_TW = Object.freeze({
   'FIRST PERSON': '第一人稱',
   'Flights': '航班',
   'FLT': '航班',
-  'Flying to Austin, TX...': '正在飛往 Austin, TX...',
+  // huckly: controls.js keeps upstream's loader text, but the home view is Taipei.
+  'Flying to Austin, TX...': '正在飛往台北…',
   'FOCUS': '聚焦',
   'FRAME · LOADING': '畫面 · 載入中',
   'FRAME · UNAVAILABLE': '畫面 · 無法取得',

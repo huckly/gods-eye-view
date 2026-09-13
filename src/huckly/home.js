@@ -2,8 +2,10 @@ import * as Cesium from 'cesium';
 
 /**
  * huckly fork: default home view. Mirrors upstream flyToAustin() in camera.js
- * (high top-down setView, then a cinematic fly-in) but lands over Taipei.
- * Kept in its own module so upstream edits to camera.js never conflict.
+ * (high top-down setView, then a cinematic fly-in, returns a cleanup that
+ * cancels the pending flight) but lands over Taipei.
+ * Kept in its own module so upstream edits to camera.js never conflict;
+ * src/standalone/controls.js imports it as `flyToAustin`.
  */
 export const HOME = Object.freeze({
   label: 'Taipei, Taiwan',
@@ -25,7 +27,8 @@ export function flyToHome(viewer) {
     },
   });
 
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    if (viewer.isDestroyed()) return;
     viewer.camera.flyTo({
       // Offset the eye north-east of the tower so a heading of ~200 deg frames it.
       destination: Cesium.Cartesian3.fromDegrees(HOME.lon + 0.008, HOME.lat + 0.016, HOME.lowM),
@@ -38,4 +41,8 @@ export function flyToHome(viewer) {
       easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
     });
   }, 500);
+  return () => {
+    clearTimeout(timer);
+    if (!viewer.isDestroyed()) viewer.camera.cancelFlight();
+  };
 }
