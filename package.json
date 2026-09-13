@@ -146,6 +146,14 @@
     "./layers/flights": "./src/layers/flights/index.js",
     "./layers/military": "./src/layers/military/index.js",
     "./aircraft": "./src/layers/aircraft/index.js",
-    "./layers/vessels": "./src/layers/vessels/index.js"
+    "./layers/vessels": "./src/layers/vessels/index.js",
+    "./layers/earthquakes": "./src/layers/earthquakes/index.js",
+    "./layers/firms": "./src/layers/firms/index.js",
+    "./layers/satellites": "./src/layers/satellites/index.js",
+    "./layers/launches": "./src/layers/launches/index.js",
+    "./layers/installations": "./src/layers/installations/index.js",
+    "./layers/awareness": "./src/layers/awareness/index.js",
+    "./layers/traffic": "./src/layers/traffic/index.js",
+    "./layers/bikeshare": "./src/layers/bikeshare/index.js"
   }
 }

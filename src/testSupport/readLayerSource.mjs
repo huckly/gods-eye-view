@@ -6,9 +6,18 @@ import { fileURLToPath } from 'node:url';
 export function readLayerSource(file) {
   const path = file instanceof URL ? fileURLToPath(file) : file;
   if (
-    !['flights.js', 'militaryFlights.js', 'aisLiveVessels.js'].includes(
-      basename(path),
-    )
+    ![
+      'flights.js',
+      'militaryFlights.js',
+      'aisLiveVessels.js',
+      'firmsHeatmap.js',
+      'satellites.js',
+      'rocketLaunches.js',
+      'militaryInstallations.js',
+      'militaryAwareness.js',
+      'traffic.js',
+      'bikeshare.js',
+    ].includes(basename(path))
   )
     return readFileSync(path, 'utf8');
   const directory = join(
@@ -17,7 +26,21 @@ export function readLayerSource(file) {
       ? '../layers/flights'
       : basename(path) === 'militaryFlights.js'
         ? '../layers/military'
-        : '../layers/vessels',
+        : basename(path) === 'firmsHeatmap.js'
+          ? '../layers/firms'
+          : basename(path) === 'satellites.js'
+            ? '../layers/satellites'
+            : basename(path) === 'rocketLaunches.js'
+              ? '../layers/launches'
+              : basename(path) === 'militaryInstallations.js'
+                ? '../layers/installations'
+                : basename(path) === 'militaryAwareness.js'
+                  ? '../layers/awareness'
+                  : basename(path) === 'traffic.js'
+                    ? '../layers/traffic'
+                    : basename(path) === 'bikeshare.js'
+                      ? '../layers/bikeshare'
+                      : '../layers/vessels',
   );
   return readdirSync(directory)
     .filter((name) => name.endsWith('.js'))
