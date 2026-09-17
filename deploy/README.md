@@ -151,7 +151,23 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 - 上游（2026-09 重構後）內建 Google → Photon 兩段式搜尋：有 `GOOGLE_MAPS_API_KEY` 用 Google，沒有就走免金鑰的 Photon（OpenStreetMap 資料）。
 - 本 fork 先前自寫的 Nominatim 備援（`src/huckly/geocode.js`）已隨上游合併移除，不再需要。
 
-## 六、中文介面
+## 六、珊瑚礁圖層（Allen Coral Atlas）
+
+- 右下角「🪸 珊瑚礁」開關；網址 `?coral=1` / `?coral=0` 也可切換（會記住）。
+- 顯示 Allen Coral Atlas 底質分類中的**珊瑚/藻類**（粉紅）與**海草床**（綠），解析度 5 m、水深約 10–15 m 內。
+- 涵蓋：東北角、墾丁、綠島、蘭嶼、澎湖、Romblon、Anilao、Puerto Galera（Sabang）。
+  基隆嶼、小琉球 Atlas 無資料。
+- **資料不進 git**（網站條款限制再散布與自動化存取）。在提供服務的主機上手動抓一次，存到 gitignored 的 `output/huckly-coral/`：
+
+```bash
+docker exec gods-eye-view-gev-1 node scripts/huckly/fetch-coral-atlas.mjs
+```
+
+- 可調：`CORAL_CLASSES`（預設 `Coral/Algae,Seagrass`，可加 `Rock,Sand,Rubble`）、`CORAL_SIMPLIFY_M`（預設 2）、`CORAL_MIN_AREA_M2`。
+- 授權：© 2018-2023 Allen Coral Atlas Partnership and Arizona State University，CC BY 4.0（已加入「Data attribution」）。
+- 實作不走上游 DataLayerManager（其圖層註冊表固定），上游檔案只改 `src/standalone/controls.js` 2 行。
+
+## 七、中文介面
 
 - 預設正體中文；網址加 `?lang=en` 切回英文（會記住），`?lang=zh-TW` 切回中文。
 - 找未翻譯字串：網址加 `?i18n-debug=1`，操作一輪後在 DevTools console 輸入 `[...hucklyI18n.missing]`，

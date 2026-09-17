@@ -1,5 +1,6 @@
 import { StyleManager } from '../ui.js';
 import { flyToHome as flyToAustin } from '../huckly/home.js'; // huckly: Taipei home view
+import { attachCoralOverlay } from '../huckly/coralOverlay.js'; // huckly: coral reef overlay
 import { initCockpitCloudEffects } from '../cockpitCloudEffects.js';
 
 /** Construct the existing controls and camera presentation. */
@@ -23,6 +24,7 @@ export function createStandaloneControls({
   const weatherEffects = null;
   const cockpitCloudEffects = initCockpitCloudEffects(viewer);
   defer(() => cockpitCloudEffects?.destroy());
+  defer(attachCoralOverlay(viewer)); // huckly: coral reef overlay
 
   // If no share link state, do default fly-to Austin
   if (!styleManager.hasShareState) {
