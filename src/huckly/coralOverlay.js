@@ -10,12 +10,13 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  * registry (layerState.js, voice-tool enums, scene policies), so a new managed
  * layer would touch many upstream files. This overlay owns its own toggle chip.
  *
- * Two looks:
- * - fill (seabed off): one GroundPrimitive per habitat class, draped on the
- *   keyless globe and on Google Photorealistic 3D Tiles;
- * - outline (seabed on): opaque polylines sitting on the drawn seabed, depth
- *   test off and raised above the seabed mesh, so patches stay pink/green
- *   instead of blending into the blue depth ramp.
+ * Mirrors the Atlas web map: all six benthic classes, the Atlas' own colours
+ * (https://allencoralatlas.org/mapping/reefclasses, style_rgba, fetched
+ * 2026-09-18) and a per-class checklist in the legend. Two looks:
+ * - fill (seabed off): one GroundPrimitive per class, draped on the keyless
+ *   globe and on Google Photorealistic 3D Tiles;
+ * - outline (seabed on): one opaque polyline Primitive per class sitting on the
+ *   drawn seabed, depth test off and raised above the seabed mesh.
  *
  * Data: output/huckly-coral/coral.geojsonl, produced once on the serving host by
  * scripts/huckly/fetch-coral-atlas.mjs (gitignored, never committed).
@@ -23,23 +24,44 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  */
 const DATA_URL = '/output/huckly-coral/coral.geojsonl';
 const STORAGE_KEY = 'huckly:coral';
+const HIDDEN_CLASSES_KEY = 'huckly:coral-hidden-classes';
 const CREDIT = {
   html:
     'Coral reefs: <a href="https://allencoralatlas.org/" target="_blank" rel="noopener">' +
     '© 2018-2023 Allen Coral Atlas Partnership and Arizona State University</a> (CC BY 4.0)',
 };
-// Exported for the legend.
+// Atlas order (`sort`) and colours (`style_rgba`). Exported for the legend.
 export const CORAL_CLASS_STYLE = {
-  'Coral/Algae': { color: '#ff5fa2', alpha: 0.6, label: '珊瑚/藻類' },
-  Seagrass: { color: '#39d98a', alpha: 0.5, label: '海草床' },
-  Rubble: { color: '#c8b27a', alpha: 0.45, label: '珊瑚碎屑' },
-  Rock: { color: '#8c8c8c', alpha: 0.4, label: '岩礁' },
-  Sand: { color: '#f2e3b3', alpha: 0.35, label: '沙地' },
+  Seagrass: { color: 'rgb(102, 132, 56)', label: '海草床' },
+  'Coral/Algae': { color: 'rgb(255, 97, 97)', label: '珊瑚/藻類' },
+  'Microalgal Mats': { color: 'rgb(155, 204, 79)', label: '微藻墊' },
+  Rock: { color: 'rgb(177, 156, 58)', label: '岩礁' },
+  Rubble: { color: 'rgb(224, 208, 94)', label: '珊瑚碎屑' },
+  Sand: { color: 'rgb(255, 255, 190)', label: '沙地' },
 };
-const FALLBACK_STYLE = { color: '#ffffff', alpha: 0.4, label: '其他' };
+const FILL_ALPHA = 0.72;
+const FALLBACK_STYLE = { color: 'rgb(255, 255, 255)', label: '其他' };
 const OUTLINE_WIDTH_PX = 2;
 
-const styleFor = (feature) => CORAL_CLASS_STYLE[feature.properties?.class_name] || FALLBACK_STYLE;
+const classOf = (feature) => feature.properties?.class_name || 'Other';
+const styleOf = (cls) => CORAL_CLASS_STYLE[cls] || FALLBACK_STYLE;
+
+function readHiddenClasses() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_CLASSES_KEY) || '[]');
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberHiddenClasses(hidden) {
+  try {
+    window.localStorage.setItem(HIDDEN_CLASSES_KEY, JSON.stringify([...hidden]));
+  } catch {
+    /* storage blocked */
+  }
+}
 
 function ringPositions(ring) {
   return Cesium.Cartesian3.fromDegreesArray(ring.flat());
@@ -59,42 +81,48 @@ async function loadFeatures(signal) {
     .map((line) => JSON.parse(line));
 }
 
-function buildFillPrimitives(features) {
-  const byClass = new Map();
+function groupByClass(features) {
+  const groups = new Map();
   for (const feature of features) {
-    const style = styleFor(feature);
-    const color = Cesium.Color.fromCssColorString(style.color).withAlpha(style.alpha);
+    const cls = classOf(feature);
+    if (!groups.has(cls)) groups.set(cls, []);
+    groups.get(cls).push(feature);
+  }
+  return groups;
+}
+
+function buildFillPrimitive(cls, features) {
+  const color = Cesium.Color.fromCssColorString(styleOf(cls).color).withAlpha(FILL_ALPHA);
+  const geometryInstances = [];
+  for (const feature of features) {
     for (const [index, [outer, ...holes]] of polygonsOf(feature.geometry).entries()) {
-      const hierarchy = new Cesium.PolygonHierarchy(
-        ringPositions(outer),
-        holes.map((hole) => new Cesium.PolygonHierarchy(ringPositions(hole))),
+      geometryInstances.push(
+        new Cesium.GeometryInstance({
+          id: { coral: true, name: feature.properties?.name, index },
+          geometry: new Cesium.PolygonGeometry({
+            polygonHierarchy: new Cesium.PolygonHierarchy(
+              ringPositions(outer),
+              holes.map((hole) => new Cesium.PolygonHierarchy(ringPositions(hole))),
+            ),
+          }),
+          attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+        }),
       );
-      const instance = new Cesium.GeometryInstance({
-        id: { coral: true, name: feature.properties?.name, index },
-        geometry: new Cesium.PolygonGeometry({ polygonHierarchy: hierarchy }),
-        attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
-      });
-      const cls = feature.properties?.class_name || 'Other';
-      if (!byClass.has(cls)) byClass.set(cls, []);
-      byClass.get(cls).push(instance);
     }
   }
-  return [...byClass.values()].map(
-    (geometryInstances) =>
-      new Cesium.GroundPrimitive({
-        geometryInstances,
-        appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
-        classificationType: Cesium.ClassificationType.BOTH,
-        asynchronous: true,
-      }),
-  );
+  return new Cesium.GroundPrimitive({
+    geometryInstances,
+    appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
+    classificationType: Cesium.ClassificationType.BOTH,
+    asynchronous: true,
+  });
 }
 
 /** Outer rings as polylines placed on the seabed (or at mean sea level). */
 export function buildOutlineInstances(features, heightAt, seaLevelAt) {
   const instances = [];
   for (const feature of features) {
-    const color = Cesium.Color.fromCssColorString(styleFor(feature).color);
+    const color = Cesium.Color.fromCssColorString(styleOf(classOf(feature)).color);
     for (const [index, [outer]] of polygonsOf(feature.geometry).entries()) {
       const unique = new Set(outer.map(([lon, lat]) => `${lon},${lat}`));
       if (unique.size < 3) continue;
@@ -124,70 +152,78 @@ export function buildOutlineInstances(features, heightAt, seaLevelAt) {
 }
 
 /**
- * Attach the coral overlay. Returns `{ cleanup, onChange, setSeabed }`:
- * - onChange(fn) is called with `true/false` when the overlay is shown/hidden;
- * - setSeabed(on, heightAt) switches between fill and on-seabed outlines.
+ * Attach the coral overlay. Returns
+ * `{ cleanup, onChange, setSeabed, classes, setClassVisible }`:
+ * - onChange(fn) fires with `enabled` when the overlay or a class toggles;
+ * - setSeabed(on, heightAt) switches between fill and on-seabed outlines;
+ * - classes() lists `{ cls, label, color, visible, count }` in Atlas order.
  */
 export function attachCoralOverlay(viewer, { slot = 0 } = {}) {
   const controller = new AbortController();
   const chip = createHucklyChip({ id: 'huckly-coral-chip', slot });
   const listeners = new Set();
-  let fillPrimitives = [];
-  let outlinePrimitive = null;
+  const hidden = readHiddenClasses();
+  const fillByClass = new Map();
+  const outlineByClass = new Map();
+  let groups = new Map();
   let features = null;
   let loaded = null;
   let enabled = false;
   let seabedOn = false;
   let heightAt = () => null;
+  let outlinesPending = null;
 
-  const emit = (state) => {
-    for (const listener of listeners) listener(state);
+  const emit = () => {
+    for (const listener of listeners) listener(enabled);
   };
 
   const render = (state) => {
-    const legend = Object.values(CORAL_CLASS_STYLE)
-      .map((style) => style.label)
-      .join(' / ');
     chip.textContent = `🪸 珊瑚礁 ${state}`;
-    chip.title = `Allen Coral Atlas 底質分類（${legend}）；開海底時改畫外框。資料 CC BY 4.0`;
+    chip.title = 'Allen Coral Atlas 底質分類（6 類，可在圖例個別勾選）；開海底時改畫外框。資料 CC BY 4.0';
     chip.style.opacity = enabled ? '1' : '0.7';
   };
 
   const ensureLoaded = () => {
     loaded ??= loadFeatures(controller.signal).then((loadedFeatures) => {
       features = loadedFeatures;
+      groups = groupByClass(loadedFeatures);
       if (viewer.isDestroyed()) return loadedFeatures;
-      fillPrimitives = buildFillPrimitives(loadedFeatures).map((primitive) => viewer.scene.primitives.add(primitive));
+      for (const [cls, classFeatures] of groups) {
+        fillByClass.set(cls, viewer.scene.primitives.add(buildFillPrimitive(cls, classFeatures)));
+      }
       registerDynamicCredit(viewer, CREDIT);
       return loadedFeatures;
     });
     return loaded;
   };
 
-  const ensureOutline = async () => {
-    if (outlinePrimitive || !features || viewer.isDestroyed()) return;
-    await ensureGeoidReady();
-    if (outlinePrimitive || viewer.isDestroyed()) return;
-    outlinePrimitive = viewer.scene.primitives.add(
-      new Cesium.Primitive({
-        geometryInstances: buildOutlineInstances(features, heightAt, (lon, lat) => geoidHeight(lat, lon)),
-        appearance: new Cesium.PolylineColorAppearance({
-          translucent: false,
-          renderState: { depthTest: { enabled: false } },
-        }),
-        asynchronous: true,
-      }),
-    );
-    // Opaque primitives with depth test off draw in collection order: stay above the seabed.
-    viewer.scene.primitives.raiseToTop(outlinePrimitive);
+  const ensureOutlines = () => {
+    if (outlineByClass.size || !features || viewer.isDestroyed()) return Promise.resolve();
+    outlinesPending ??= ensureGeoidReady().then(() => {
+      if (outlineByClass.size || viewer.isDestroyed()) return;
+      const appearance = new Cesium.PolylineColorAppearance({
+        translucent: false,
+        renderState: { depthTest: { enabled: false } },
+      });
+      for (const [cls, classFeatures] of groups) {
+        const primitive = new Cesium.Primitive({
+          geometryInstances: buildOutlineInstances(classFeatures, heightAt, (lon, lat) => geoidHeight(lat, lon)),
+          appearance,
+          asynchronous: true,
+        });
+        outlineByClass.set(cls, viewer.scene.primitives.add(primitive));
+      }
+    });
+    return outlinesPending;
   };
 
   const applyVisibility = async () => {
-    for (const primitive of fillPrimitives) primitive.show = enabled && !seabedOn;
-    if (enabled && seabedOn) await ensureOutline();
-    if (outlinePrimitive) {
-      outlinePrimitive.show = enabled && seabedOn;
-      if (outlinePrimitive.show) viewer.scene.primitives.raiseToTop(outlinePrimitive);
+    for (const [cls, primitive] of fillByClass) primitive.show = enabled && !seabedOn && !hidden.has(cls);
+    if (enabled && seabedOn) await ensureOutlines();
+    for (const [cls, primitive] of outlineByClass) {
+      primitive.show = enabled && seabedOn && !hidden.has(cls);
+      // Opaque primitives with depth test off draw in collection order: stay above the seabed.
+      if (primitive.show) viewer.scene.primitives.raiseToTop(primitive);
     }
     viewer.scene.requestRender();
   };
@@ -198,7 +234,7 @@ export function attachCoralOverlay(viewer, { slot = 0 } = {}) {
     if (!next) {
       await applyVisibility();
       render('關');
-      emit(false);
+      emit();
       return;
     }
     render('載入中…');
@@ -207,14 +243,14 @@ export function attachCoralOverlay(viewer, { slot = 0 } = {}) {
       if (!enabled) return;
       await applyVisibility();
       render(`開 · ${loadedFeatures.length}`);
-      emit(true);
+      emit();
     } catch (error) {
       if (controller.signal.aborted) return;
       console.warn('[huckly-coral] overlay unavailable:', error);
       loaded = null;
       enabled = false;
       render('無資料');
-      emit(false);
+      emit();
     }
   };
 
@@ -227,6 +263,22 @@ export function attachCoralOverlay(viewer, { slot = 0 } = {}) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    classes() {
+      return Object.entries(CORAL_CLASS_STYLE).map(([cls, style]) => ({
+        cls,
+        label: style.label,
+        color: style.color,
+        visible: !hidden.has(cls),
+        count: groups.get(cls)?.length ?? 0,
+      }));
+    },
+    setClassVisible(cls, visible) {
+      if (visible) hidden.delete(cls);
+      else hidden.add(cls);
+      rememberHiddenClasses(hidden);
+      applyVisibility().catch((error) => console.warn('[huckly-coral] class toggle failed:', error));
+      emit();
+    },
     setSeabed(on, seabedHeightAt) {
       seabedOn = on;
       if (seabedHeightAt) heightAt = seabedHeightAt;
@@ -237,11 +289,12 @@ export function attachCoralOverlay(viewer, { slot = 0 } = {}) {
       listeners.clear();
       chip.remove();
       if (!viewer.isDestroyed()) {
-        for (const primitive of fillPrimitives) viewer.scene.primitives.remove(primitive);
-        if (outlinePrimitive) viewer.scene.primitives.remove(outlinePrimitive);
+        for (const primitive of [...fillByClass.values(), ...outlineByClass.values()]) {
+          viewer.scene.primitives.remove(primitive);
+        }
       }
-      fillPrimitives = [];
-      outlinePrimitive = null;
+      fillByClass.clear();
+      outlineByClass.clear();
     },
   };
 }

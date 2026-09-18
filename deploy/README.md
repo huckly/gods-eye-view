@@ -154,7 +154,7 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 ## 六、珊瑚礁圖層（Allen Coral Atlas）
 
 - 右下角「🪸 珊瑚礁」開關；網址 `?coral=1` / `?coral=0` 也可切換（會記住）。
-- 顯示 Allen Coral Atlas 底質分類中的**珊瑚/藻類**（粉紅）與**海草床**（綠），解析度 5 m、水深約 10–15 m 內。
+- 比照 Atlas 網站：6 類底質（海草床、珊瑚/藻類、微藻墊、岩礁、珊瑚碎屑、沙地），使用 Atlas 官方配色（`/mapping/reefclasses` 的 `style_rgba`），右下角圖例可逐類勾選（會記住）；解析度 5 m、水深約 10–15 m 內。
 - 涵蓋：東北角、墾丁、綠島、蘭嶼、澎湖、Romblon、Anilao、Puerto Galera（Sabang）。
   基隆嶼、小琉球 Atlas 無資料。
 - **資料不進 git**（網站條款限制再散布與自動化存取）。在提供服務的主機上手動抓一次，存到 gitignored 的 `output/huckly-coral/`：
@@ -163,7 +163,7 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 docker exec gods-eye-view-gev-1 node scripts/huckly/fetch-coral-atlas.mjs
 ```
 
-- 可調：`CORAL_CLASSES`（預設 `Coral/Algae,Seagrass`，可加 `Rock,Sand,Rubble`）、`CORAL_SIMPLIFY_M`（預設 2）、`CORAL_MIN_AREA_M2`。
+- 可調：`CORAL_CLASSES`（預設 6 類全抓，約 3 萬塊、30 MB）、`CORAL_SIMPLIFY_M`（預設 2）、`CORAL_MIN_AREA_M2`。
 - 授權：© 2018-2023 Allen Coral Atlas Partnership and Arizona State University，CC BY 4.0（已加入「Data attribution」）。
 - 實作不走上游 DataLayerManager（其圖層註冊表固定），上游檔案只改 `src/standalone/controls.js` 2 行。
 

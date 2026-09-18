@@ -14,7 +14,7 @@
  *   node scripts/huckly/fetch-coral-atlas.mjs            # all areas
  *   node scripts/huckly/fetch-coral-atlas.mjs kenting    # selected areas
  *
- * Env: CORAL_CLASSES (default "Coral/Algae,Seagrass"),
+ * Env: CORAL_CLASSES (default: all six benthic classes),
  *      CORAL_SIMPLIFY_M (default 2, Douglas-Peucker tolerance in metres),
  *      CORAL_MIN_AREA_M2 (default 0, drop smaller patches).
  */
@@ -137,7 +137,7 @@ async function main() {
   const wanted = new Set(process.argv.slice(2));
   const areas = wanted.size ? AREAS.filter((a) => wanted.has(a.id)) : AREAS;
   const classes = new Set(
-    (process.env.CORAL_CLASSES || 'Coral/Algae,Seagrass').split(',').map((s) => s.trim()).filter(Boolean),
+    (process.env.CORAL_CLASSES || 'Seagrass,Coral/Algae,Microalgal Mats,Rock,Rubble,Sand').split(',').map((s) => s.trim()).filter(Boolean),
   );
   const toleranceM = Number(process.env.CORAL_SIMPLIFY_M ?? 2);
   const minAreaM2 = Number(process.env.CORAL_MIN_AREA_M2 ?? 0);
