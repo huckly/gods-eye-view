@@ -13,7 +13,7 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  * channels and drop-offs read like a shaded-relief chart. Depth testing is off
  * so the seabed shows through Google Photorealistic 3D Tiles' opaque water
  * surface; the data only exists under water, so it never paints over land.
- * Relief is exaggerated (default 6x, ?seabedx=1..10).
+ * The grid is smoothed and shaded by ~80 m slopes; relief exaggerated (default 4x, ?seabedx=1..10).
  *
  * Data: output/huckly-bathy/web/ (gitignored), produced from the Atlas
  * download ZIPs by scripts/huckly/prepare-bathymetry.py.
@@ -22,9 +22,16 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
 const BASE_URL = '/output/huckly-bathy/web/';
 const STORAGE_KEY = 'huckly:seabed';
 const BAND_M = 1;
-const SHADE_LEVELS = 6;
-// Shallow reef flats are gentle; 6x makes 1-2 m relief readable from ~1 km.
-const DEFAULT_EXAGGERATION = 6;
+// Odd so a flat bottom lands exactly on the middle level (no 2-level flicker).
+const SHADE_LEVELS = 7;
+// With the grid smoothed, 4x keeps reef slopes readable without caricature.
+const DEFAULT_EXAGGERATION = 4;
+// Masked box-blur radius (cells, 20 m each) applied before meshing.
+const SMOOTH_RADIUS = 1;
+// Shading slope is measured over +/- this many cells (~80 m span at 20 m).
+const SHADE_SPAN_CELLS = 2;
+// Brightness spread around a flat bottom; higher = stronger relief shading.
+const SHADE_GAIN = 4;
 // Light from the north-west, 45 degrees up (local east/north/up axes).
 const LIGHT = normalize([-0.5, 0.5, Math.SQRT1_2]);
 const CREDIT = {
@@ -78,8 +85,38 @@ function shadedColor(band, shadeLevel) {
 }
 
 /**
+ * Masked box blur of a depth grid (cm, 0 = no data): each valid cell becomes
+ * the mean of the valid cells within `radius`. Satellite-derived depth carries
+ * per-pixel noise that, exaggerated, reads as a shattered mosaic.
+ */
+export function smoothDepth(depthCm, rows, cols, radius = SMOOTH_RADIUS) {
+  const out = new Float64Array(rows * cols);
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      if (depthCm[r * cols + c] <= 0) continue;
+      let sum = 0;
+      let n = 0;
+      for (let rr = Math.max(0, r - radius); rr <= Math.min(rows - 1, r + radius); rr += 1) {
+        for (let cc = Math.max(0, c - radius); cc <= Math.min(cols - 1, c + radius); cc += 1) {
+          const v = depthCm[rr * cols + cc];
+          if (v > 0) {
+            sum += v;
+            n += 1;
+          }
+        }
+      }
+      out[r * cols + c] = sum / n;
+    }
+  }
+  return out;
+}
+
+/**
  * Build one GeometryInstance per (depth band x shade level) for an area grid.
- * Colours are baked per triangle, so the appearance needs no scene lighting.
+ * `depthCm` should already be smoothed (see smoothDepth). Shading comes from the
+ * slope over +/-SHADE_SPAN_CELLS cells around each vertex (not per triangle),
+ * so it follows landforms rather than pixel noise. Colours are baked, so the
+ * appearance needs no scene lighting.
  */
 export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
   const { rows, cols, west, north, dLon, dLat } = meta;
@@ -89,7 +126,13 @@ export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
   const vertexOf = new Int32Array(rows * cols).fill(-1);
   const positions = [];
   const depths = [];
-  const local = []; // x east, y north, z up (metres, exaggerated)
+  const lamberts = [];
+  const zAt = (r, c, fallback) => {
+    if (r < 0 || c < 0 || r >= rows || c >= cols) return fallback;
+    const cm = depthCm[r * cols + c];
+    return cm > 0 ? (-cm / 100) * exaggeration : fallback;
+  };
+  const k = SHADE_SPAN_CELLS;
   for (let r = 0; r < rows; r += 1) {
     for (let c = 0; c < cols; c += 1) {
       const cm = depthCm[r * cols + c];
@@ -100,24 +143,23 @@ export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
         north - (r + 0.5) * dLat,
         seaLevelM - depthM * exaggeration,
       );
+      const z = -depthM * exaggeration;
+      const dzdx = (zAt(r, c + k, z) - zAt(r, c - k, z)) / (2 * k * dxM);
+      const dzdy = (zAt(r - k, c, z) - zAt(r + k, c, z)) / (2 * k * dyM); // row index grows southward
+      const [nx, ny, nz] = normalize([-dzdx, -dzdy, 1]);
       vertexOf[r * cols + c] = depths.length;
       positions.push(p.x, p.y, p.z);
       depths.push(depthM);
-      local.push(c * dxM, -r * dyM, -depthM * exaggeration);
+      lamberts.push(Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]));
     }
   }
 
   const buckets = new Map();
   const pushTriangle = (a, b, c) => {
-    const ax = local[a * 3];
-    const ay = local[a * 3 + 1];
-    const az = local[a * 3 + 2];
-    const u = [local[b * 3] - ax, local[b * 3 + 1] - ay, local[b * 3 + 2] - az];
-    const v = [local[c * 3] - ax, local[c * 3 + 1] - ay, local[c * 3 + 2] - az];
-    const n = normalize([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]);
-    const up = n[2] < 0 ? n.map((k) => -k) : n;
-    const lambert = Math.max(0, up[0] * LIGHT[0] + up[1] * LIGHT[1] + up[2] * LIGHT[2]);
-    const shadeLevel = Math.min(SHADE_LEVELS - 1, Math.round(lambert * (SHADE_LEVELS - 1)));
+    // Contrast relative to a flat bottom (which faces the light at LIGHT[2]).
+    const lambert = (lamberts[a] + lamberts[b] + lamberts[c]) / 3;
+    const shade = Math.min(1, Math.max(0, 0.5 + (lambert - LIGHT[2]) * SHADE_GAIN));
+    const shadeLevel = Math.round(shade * (SHADE_LEVELS - 1));
     const band = Math.floor((depths[a] + depths[b] + depths[c]) / 3 / BAND_M);
     const key = band * SHADE_LEVELS + shadeLevel;
     if (!buckets.has(key)) buckets.set(key, { band, shadeLevel, indices: [] });
@@ -261,7 +303,9 @@ export function attachSeabedOverlay(viewer, { slot = 1 } = {}) {
       areas = loadedAreas.map(({ meta, depthCm }) => {
         const centerLat = meta.north - (meta.rows * meta.dLat) / 2;
         const centerLon = meta.west + (meta.cols * meta.dLon) / 2;
-        return { meta, depthCm, seaLevelM: geoidHeight(centerLat, centerLon) };
+        // Mesh and coral-outline heights both read the smoothed grid so they agree.
+        const smoothed = smoothDepth(depthCm, meta.rows, meta.cols);
+        return { meta, depthCm: smoothed, seaLevelM: geoidHeight(centerLat, centerLon) };
       });
       for (const { meta, depthCm, seaLevelM } of areas) {
         const primitive = new Cesium.Primitive({
