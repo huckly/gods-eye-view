@@ -8,8 +8,8 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  * bathymetry (0 to ~25 m), for dive areas downloaded by hand.
  *
  * Each area becomes an opaque height-field mesh placed below local mean sea
- * level (EGM96 geoid). Every triangle is coloured by depth (1 m steps) and
- * shaded by its slope against a light from the north-west, so reef edges,
+ * level (EGM96 geoid). Every vertex is coloured by depth and shaded by its
+ * slope against a light from the north-west, so reef edges,
  * channels and drop-offs read like a shaded-relief chart. Depth testing is off
  * so the seabed shows through Google Photorealistic 3D Tiles' opaque water
  * surface; the data only exists under water, so it never paints over land.
@@ -21,9 +21,6 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  */
 const BASE_URL = '/output/huckly-bathy/web/';
 const STORAGE_KEY = 'huckly:seabed';
-const BAND_M = 1;
-// Odd so a flat bottom lands exactly on the middle level (no 2-level flicker).
-const SHADE_LEVELS = 7;
 // With the grid smoothed, 4x keeps reef slopes readable without caricature.
 const DEFAULT_EXAGGERATION = 4;
 // Masked box-blur radius (cells, 20 m each) applied before meshing.
@@ -38,7 +35,8 @@ const CREDIT = {
   html:
     'Seabed: <a href="https://allencoralatlas.org/" target="_blank" rel="noopener">' +
     '© 2018-2023 Allen Coral Atlas Partnership and Arizona State University</a> (CC BY 4.0), ' +
-    'satellite-derived bathymetry',
+    'satellite-derived bathymetry; shore strip bounded by coastline ' +
+    '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>',
 };
 // Shallow → deep colour ramp (metres). Exported for the legend.
 export const SEABED_RAMP = [
@@ -77,11 +75,10 @@ export function rampRgb(depthM) {
   return [255, 255, 255];
 }
 
-function shadedColor(band, shadeLevel) {
-  // Brightness 0.5 (facing away from the light) .. 1.15 (facing it).
-  const factor = 0.5 + (0.65 * shadeLevel) / (SHADE_LEVELS - 1);
-  const [r, g, b] = rampRgb((band + 0.5) * BAND_M).map((v) => Math.min(255, Math.round(v * factor)));
-  return Cesium.Color.fromBytes(r, g, b, 255);
+/** Brightness 0.5 (facing away from the light) .. 1.15 (facing it), for shade 0..1. */
+export function shadedRgb(depthM, shade) {
+  const factor = 0.5 + 0.65 * shade;
+  return rampRgb(depthM).map((v) => Math.min(255, Math.round(v * factor)));
 }
 
 /**
@@ -112,11 +109,14 @@ export function smoothDepth(depthCm, rows, cols, radius = SMOOTH_RADIUS) {
 }
 
 /**
- * Build one GeometryInstance per (depth band x shade level) for an area grid.
+ * Build the seabed of one area grid as a single GeometryInstance whose colour is
+ * a per-vertex attribute: depth ramp times relief shading, interpolated across
+ * each triangle, so the surface reads as smooth gradients rather than facets.
  * `depthCm` should already be smoothed (see smoothDepth). Shading comes from the
- * slope over +/-SHADE_SPAN_CELLS cells around each vertex (not per triangle),
- * so it follows landforms rather than pixel noise. Colours are baked, so the
- * appearance needs no scene lighting.
+ * slope over +/-SHADE_SPAN_CELLS cells around each vertex, so it follows
+ * landforms rather than pixel noise. Colours are baked (no scene lighting).
+ * With no instance colour attribute, PerInstanceColorAppearance's `color`
+ * shader input reads this vertex attribute.
  */
 export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
   const { rows, cols, west, north, dLon, dLat } = meta;
@@ -125,8 +125,7 @@ export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
   const dyM = dLat * 110540;
   const vertexOf = new Int32Array(rows * cols).fill(-1);
   const positions = [];
-  const depths = [];
-  const lamberts = [];
+  const colors = [];
   const zAt = (r, c, fallback) => {
     if (r < 0 || c < 0 || r >= rows || c >= cols) return fallback;
     const cm = depthCm[r * cols + c];
@@ -147,24 +146,16 @@ export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
       const dzdx = (zAt(r, c + k, z) - zAt(r, c - k, z)) / (2 * k * dxM);
       const dzdy = (zAt(r - k, c, z) - zAt(r + k, c, z)) / (2 * k * dyM); // row index grows southward
       const [nx, ny, nz] = normalize([-dzdx, -dzdy, 1]);
-      vertexOf[r * cols + c] = depths.length;
+      const lambert = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]);
+      // Contrast relative to a flat bottom (which faces the light at LIGHT[2]).
+      const shade = Math.min(1, Math.max(0, 0.5 + (lambert - LIGHT[2]) * SHADE_GAIN));
+      vertexOf[r * cols + c] = positions.length / 3;
       positions.push(p.x, p.y, p.z);
-      depths.push(depthM);
-      lamberts.push(Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]));
+      colors.push(...shadedRgb(depthM, shade), 255);
     }
   }
 
-  const buckets = new Map();
-  const pushTriangle = (a, b, c) => {
-    // Contrast relative to a flat bottom (which faces the light at LIGHT[2]).
-    const lambert = (lamberts[a] + lamberts[b] + lamberts[c]) / 3;
-    const shade = Math.min(1, Math.max(0, 0.5 + (lambert - LIGHT[2]) * SHADE_GAIN));
-    const shadeLevel = Math.round(shade * (SHADE_LEVELS - 1));
-    const band = Math.floor((depths[a] + depths[b] + depths[c]) / 3 / BAND_M);
-    const key = band * SHADE_LEVELS + shadeLevel;
-    if (!buckets.has(key)) buckets.set(key, { band, shadeLevel, indices: [] });
-    buckets.get(key).indices.push(a, b, c);
-  };
+  const indices = [];
   for (let r = 0; r < rows - 1; r += 1) {
     for (let c = 0; c < cols - 1; c += 1) {
       const nw = vertexOf[r * cols + c];
@@ -172,48 +163,36 @@ export function buildSeabedInstances(meta, depthCm, seaLevelM, exaggeration) {
       const sw = vertexOf[(r + 1) * cols + c];
       const se = vertexOf[(r + 1) * cols + c + 1];
       // Counter-clockwise seen from above (north up, east right).
-      if (nw >= 0 && sw >= 0 && ne >= 0) pushTriangle(nw, sw, ne);
-      if (ne >= 0 && sw >= 0 && se >= 0) pushTriangle(ne, sw, se);
+      if (nw >= 0 && sw >= 0 && ne >= 0) indices.push(nw, sw, ne);
+      if (ne >= 0 && sw >= 0 && se >= 0) indices.push(ne, sw, se);
     }
   }
+  if (!indices.length) return [];
 
-  const instances = [];
-  const localOf = new Int32Array(depths.length);
-  for (const { band, shadeLevel, indices: globalIndices } of buckets.values()) {
-    localOf.fill(-1);
-    const values = [];
-    const indices = new Uint32Array(globalIndices.length);
-    for (let i = 0; i < globalIndices.length; i += 1) {
-      const g = globalIndices[i];
-      if (localOf[g] < 0) {
-        localOf[g] = values.length / 3;
-        values.push(positions[g * 3], positions[g * 3 + 1], positions[g * 3 + 2]);
-      }
-      indices[i] = localOf[g];
-    }
-    const packed = new Float64Array(values);
-    instances.push(
-      new Cesium.GeometryInstance({
-        id: { seabed: meta.id, band, shadeLevel },
-        geometry: new Cesium.Geometry({
-          attributes: {
-            position: new Cesium.GeometryAttribute({
-              componentDatatype: Cesium.ComponentDatatype.DOUBLE,
-              componentsPerAttribute: 3,
-              values: packed,
-            }),
-          },
-          indices,
-          primitiveType: Cesium.PrimitiveType.TRIANGLES,
-          boundingSphere: Cesium.BoundingSphere.fromVertices(packed),
-        }),
+  const packed = new Float64Array(positions);
+  return [
+    new Cesium.GeometryInstance({
+      id: { seabed: meta.id },
+      geometry: new Cesium.Geometry({
         attributes: {
-          color: Cesium.ColorGeometryInstanceAttribute.fromColor(shadedColor(band, shadeLevel)),
+          position: new Cesium.GeometryAttribute({
+            componentDatatype: Cesium.ComponentDatatype.DOUBLE,
+            componentsPerAttribute: 3,
+            values: packed,
+          }),
+          color: new Cesium.GeometryAttribute({
+            componentDatatype: Cesium.ComponentDatatype.UNSIGNED_BYTE,
+            componentsPerAttribute: 4,
+            normalize: true,
+            values: new Uint8Array(colors),
+          }),
         },
+        indices: new Uint32Array(indices),
+        primitiveType: Cesium.PrimitiveType.TRIANGLES,
+        boundingSphere: Cesium.BoundingSphere.fromVertices(packed),
       }),
-    );
-  }
-  return instances;
+    }),
+  ];
 }
 
 /** Nearest valid depth (m) at lon/lat within one area grid, or null. */
@@ -277,7 +256,7 @@ export function attachSeabedOverlay(viewer, { slot = 1 } = {}) {
     chip.textContent = `🌊 海底 ${state}`;
     chip.title =
       `Allen Coral Atlas 衛星推算水深（10 m 格網、約 0–25 m），垂直放大 ${exaggeration}x，` +
-      '每 1 m 一色並加西北光源陰影。資料 CC BY 4.0';
+      '顏色隨深度漸變並加西北光源陰影；岸邊淺水帶依 OSM 海岸線補齊。資料 CC BY 4.0';
     chip.style.opacity = enabled ? '1' : '0.7';
   };
 

@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import { registerDynamicCredit } from '../data/dataCredits.js';
 import { ensureGeoidReady, geoidHeight } from '../data/geoid.js';
 import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
+import { smoothGeometry } from './ringSmooth.js';
 
 /**
  * huckly fork: Allen Coral Atlas benthic habitat overlay for dive areas.
@@ -20,6 +21,8 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  *
  * Data: output/huckly-coral/coral.geojsonl, produced once on the serving host by
  * scripts/huckly/fetch-coral-atlas.mjs (gitignored, never committed).
+ * Edges are rounded on load (ringSmooth.js, ~2 m mean shift, 6.7 m worst);
+ * ?coralsmooth=0 shows the raw 5 m pixel staircase.
  * Toggle: the "珊瑚礁" chip (bottom-right), or ?coral=1 / ?coral=0 in the URL.
  */
 const DATA_URL = '/output/huckly-coral/coral.geojsonl';
@@ -71,14 +74,26 @@ function polygonsOf(geometry) {
   return geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
 }
 
+function smoothingEnabled() {
+  try {
+    return new URLSearchParams(window.location.search).get('coralsmooth') !== '0';
+  } catch {
+    return true;
+  }
+}
+
 async function loadFeatures(signal) {
   const response = await fetch(DATA_URL, { signal, cache: 'no-cache' });
   if (!response.ok) throw new Error(`coral data HTTP ${response.status}`);
   const text = await response.text();
+  const smooth = smoothingEnabled();
   return text
     .split('\n')
     .filter((line) => line.trim())
-    .map((line) => JSON.parse(line));
+    .map((line) => {
+      const feature = JSON.parse(line);
+      return smooth ? { ...feature, geometry: smoothGeometry(feature.geometry) } : feature;
+    });
 }
 
 function groupByClass(features) {

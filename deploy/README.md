@@ -155,6 +155,7 @@ sudo -n env GEV_UID=$(id -u) GEV_GID=$(id -g) docker compose -f deploy/compose.y
 
 - 右下角「🪸 珊瑚礁」開關；網址 `?coral=1` / `?coral=0` 也可切換（會記住）。
 - 比照 Atlas 網站：6 類底質（海草床、珊瑚/藻類、微藻墊、岩礁、珊瑚碎屑、沙地），使用 Atlas 官方配色（`/mapping/reefclasses` 的 `style_rgba`），右下角圖例可逐類勾選（會記住）；解析度 5 m、水深約 10–15 m 內。
+- 邊緣在瀏覽器載入時圓滑化（簡化 5 m + 角點切削，平均偏移約 2 m、最大 6.7 m，頂點約 1.4 倍）；`?coralsmooth=0` 顯示原始 5 m 像素鋸齒。
 - 涵蓋：東北角、墾丁、綠島、蘭嶼、澎湖、Romblon、Anilao、Puerto Galera（Sabang）。
   基隆嶼、小琉球 Atlas 無資料。
 - **資料不進 git**（網站條款限制再散布與自動化存取）。在提供服務的主機上手動抓一次，存到 gitignored 的 `output/huckly-coral/`：
@@ -170,7 +171,7 @@ docker exec gods-eye-view-gev-1 node scripts/huckly/fetch-coral-atlas.mjs
 ## 七、3D 海底（Allen Coral Atlas 衛星推算水深）
 
 - 右下角「🌊 海底」開關；網址 `?seabed=1` / `?seabed=0`，垂直放大 `?seabedx=1..10`（預設 4）。
-- 10 m 格網（轉換時中位數降為 20 m）、約 0–25 m 深，每 1 m 一色（淺青 → 深藍），先做 3×3 平滑再以約 80 m 範圍的坡度計算西北光源陰影（不透明），開海底時珊瑚改畫外框貼在海底上，右下角有圖例，
+- 10 m 格網（轉換時中位數降為 20 m）、約 0–25 m 深，顏色逐頂點隨深度漸變（淺青 → 深藍），先做 3×3 平滑再以約 80 m 範圍的坡度計算西北光源陰影（不透明），開海底時珊瑚改畫外框貼在海底上，右下角有圖例，
   放在 EGM96 平均海面以下，關閉深度測試以穿透 Google 3D 的不透明海面。
 - 資料取得（需免費帳號，**只能手動**）：
   1. https://allencoralatlas.org/atlas/ 登入 → My Areas → Upload `output/huckly-bathy/areas/<潛點>.geojson` → Save Area
@@ -182,6 +183,8 @@ python scripts/huckly/prepare-bathymetry.py --step 2
 scp output/huckly-bathy/web/* <主機>:/opt/gods-eye-view/output/huckly-bathy/web/
 ```
 
+- 岸邊淺水帶補齊：Atlas 在沙灘外 20–60 m 的碎浪帶沒有水深，轉換時從淺水邊緣（≤ 6 m）往外長最多 4 格（約 80 m）、深度逐格遞減，
+  以 OpenStreetMap 海岸線為界（Overpass 抓一次，快取在 `output/huckly-bathy/coast/`），抓不到海岸線就不補，避免蓋到陸地。`--no-shore-fill` 關閉。
 - 已驗證格式（2026-09-18）：int16 GeoTIFF、EPSG:4326、深度為正值公分、NoData 0；垂直基準文件未載明（推測為成像當下水面，未做潮位校正）。
 - 授權 CC BY 4.0（已加入「Data attribution」）；資料不進 git。
 
