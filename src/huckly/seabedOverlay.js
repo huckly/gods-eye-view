@@ -11,7 +11,7 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
  * level (EGM96 geoid) and coloured in 2 m depth bands. Depth testing is off so
  * the seabed shows through Google Photorealistic 3D Tiles' opaque water surface
  * and through the keyless globe; the data only exists under water, so it never
- * paints over land. Relief is exaggerated (default 3x) so reef slopes read.
+ * paints over land. Relief is exaggerated (default 6x) and the mesh is translucent so the coral overlay stays visible.
  *
  * Data: output/huckly-bathy/web/ (gitignored), produced from the Atlas
  * download ZIPs by scripts/huckly/prepare-bathymetry.py.
@@ -20,6 +20,11 @@ import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
 const BASE_URL = '/output/huckly-bathy/web/';
 const STORAGE_KEY = 'huckly:seabed';
 const BAND_M = 2;
+// Shallow reef flats are gentle; 6x makes 1-2 m relief readable from ~1 km.
+const DEFAULT_EXAGGERATION = 6;
+// Translucent so the coral overlay (drawn on the 3D tiles' water surface) and
+// the seabed read together; the seabed alone ignores depth to show through water.
+const SEABED_ALPHA = 0.55;
 const CREDIT = {
   html:
     'Seabed: <a href="https://allencoralatlas.org/" target="_blank" rel="noopener">' +
@@ -40,9 +45,9 @@ const RAMP = [
 function readExaggeration() {
   try {
     const value = Number(new URLSearchParams(window.location.search).get('seabedx'));
-    return Number.isFinite(value) && value >= 1 && value <= 10 ? value : 3;
+    return Number.isFinite(value) && value >= 1 && value <= 10 ? value : DEFAULT_EXAGGERATION;
   } catch {
-    return 3;
+    return DEFAULT_EXAGGERATION;
   }
 }
 
@@ -53,7 +58,7 @@ function rampColor(depthM) {
     if (depthM <= d1 || i === RAMP.length - 1) {
       const t = Math.min(1, Math.max(0, (depthM - d0) / (d1 - d0)));
       const [r, g, b] = c0.map((v, k) => Math.round(v + (c1[k] - v) * t));
-      return Cesium.Color.fromBytes(r, g, b, 255);
+      return Cesium.Color.fromBytes(r, g, b, Math.round(SEABED_ALPHA * 255));
     }
   }
   return Cesium.Color.WHITE;
@@ -177,7 +182,7 @@ export function attachSeabedOverlay(viewer, { slot = 1 } = {}) {
       if (viewer.isDestroyed()) return areas;
       const appearance = new Cesium.PerInstanceColorAppearance({
         flat: false,
-        translucent: false,
+        translucent: true,
         renderState: {
           depthTest: { enabled: false },
           cull: { enabled: true, face: Cesium.CullFace.BACK },
