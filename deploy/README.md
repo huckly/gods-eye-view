@@ -167,7 +167,25 @@ docker exec gods-eye-view-gev-1 node scripts/huckly/fetch-coral-atlas.mjs
 - 授權：© 2018-2023 Allen Coral Atlas Partnership and Arizona State University，CC BY 4.0（已加入「Data attribution」）。
 - 實作不走上游 DataLayerManager（其圖層註冊表固定），上游檔案只改 `src/standalone/controls.js` 2 行。
 
-## 七、中文介面
+## 七、3D 海底（Allen Coral Atlas 衛星推算水深）
+
+- 右下角「🌊 海底」開關；網址 `?seabed=1` / `?seabed=0`，垂直放大 `?seabedx=1..10`（預設 3）。
+- 10 m 格網（轉換時中位數降為 20 m）、約 0–25 m 深，每 2 m 一色（淺青 → 深藍），
+  放在 EGM96 平均海面以下，關閉深度測試以穿透 Google 3D 的不透明海面。
+- 資料取得（需免費帳號，**只能手動**）：
+  1. https://allencoralatlas.org/atlas/ 登入 → My Areas → Upload `output/huckly-bathy/areas/<潛點>.geojson` → Save Area
+  2. Download Data → 只勾 **Bathymetry - composite depth** → 同意授權 → Prepare Download → 收 Email 下載 ZIP
+  3. ZIP 放到 `output/huckly-bathy/raw/`，執行（需 `pip install numpy tifffile imagecodecs`）：
+
+```bash
+python scripts/huckly/prepare-bathymetry.py --step 2
+scp output/huckly-bathy/web/* <主機>:/opt/gods-eye-view/output/huckly-bathy/web/
+```
+
+- 已驗證格式（2026-09-18）：int16 GeoTIFF、EPSG:4326、深度為正值公分、NoData 0；垂直基準文件未載明（推測為成像當下水面，未做潮位校正）。
+- 授權 CC BY 4.0（已加入「Data attribution」）；資料不進 git。
+
+## 八、中文介面
 
 - 預設正體中文；網址加 `?lang=en` 切回英文（會記住），`?lang=zh-TW` 切回中文。
 - 找未翻譯字串：網址加 `?i18n-debug=1`，操作一輪後在 DevTools console 輸入 `[...hucklyI18n.missing]`，

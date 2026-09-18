@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { registerDynamicCredit } from '../data/dataCredits.js';
+import { createHucklyChip, readToggle, rememberToggle } from './chip.js';
 
 /**
  * huckly fork: Allen Coral Atlas benthic habitat overlay for dive areas.
@@ -30,27 +31,6 @@ const CLASS_STYLE = {
   Sand: { color: '#f2e3b3', alpha: 0.35, label: '沙地' },
 };
 const FALLBACK_STYLE = { color: '#ffffff', alpha: 0.4, label: '其他' };
-
-function readInitialEnabled() {
-  try {
-    const param = new URLSearchParams(window.location.search).get('coral');
-    if (param === '1' || param === '0') {
-      window.localStorage.setItem(STORAGE_KEY, param);
-      return param === '1';
-    }
-    return window.localStorage.getItem(STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function rememberEnabled(enabled) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, enabled ? '1' : '0');
-  } catch {
-    /* storage blocked */
-  }
-}
 
 function ringPositions(ring) {
   return Cesium.Cartesian3.fromDegreesArray(ring.flat());
@@ -104,36 +84,13 @@ function buildPrimitives(features) {
   );
 }
 
-function createChip() {
-  const chip = document.createElement('button');
-  chip.type = 'button';
-  chip.id = 'huckly-coral-chip';
-  chip.dataset.i18nSkip = '';
-  Object.assign(chip.style, {
-    position: 'fixed',
-    right: '12px',
-    bottom: '48px',
-    zIndex: '40',
-    padding: '4px 10px',
-    font: '600 11px "JetBrains Mono", "SF Mono", monospace',
-    letterSpacing: '1px',
-    color: '#7fe7ff',
-    background: 'rgba(4, 16, 24, 0.78)',
-    border: '1px solid rgba(127, 231, 255, 0.45)',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  });
-  document.body.appendChild(chip);
-  return chip;
-}
-
 /**
  * Attach the coral overlay to a viewer. Returns a cleanup for the caller's
  * `defer()` so it tears down with the rest of the standalone controls.
  */
-export function attachCoralOverlay(viewer) {
+export function attachCoralOverlay(viewer, { slot = 0 } = {}) {
   const controller = new AbortController();
-  const chip = createChip();
+  const chip = createHucklyChip({ id: 'huckly-coral-chip', slot });
   let primitives = [];
   let loaded = null;
   let enabled = false;
@@ -163,7 +120,7 @@ export function attachCoralOverlay(viewer) {
 
   const setEnabled = async (next) => {
     enabled = next;
-    rememberEnabled(next);
+    rememberToggle(STORAGE_KEY, next);
     if (!next) {
       for (const primitive of primitives) primitive.show = false;
       render('關');
@@ -188,7 +145,7 @@ export function attachCoralOverlay(viewer) {
 
   chip.addEventListener('click', () => setEnabled(!enabled));
   render('關');
-  if (readInitialEnabled()) setEnabled(true);
+  if (readToggle('coral', STORAGE_KEY)) setEnabled(true);
 
   return () => {
     controller.abort();
