@@ -169,8 +169,8 @@ docker exec gods-eye-view-gev-1 node scripts/huckly/fetch-coral-atlas.mjs
 
 ## 七、3D 海底（Allen Coral Atlas 衛星推算水深）
 
-- 右下角「🌊 海底」開關；網址 `?seabed=1` / `?seabed=0`，垂直放大 `?seabedx=1..10`（預設 6）；半透明（55%）以透出珊瑚礁圖層。
-- 10 m 格網（轉換時中位數降為 20 m）、約 0–25 m 深，每 2 m 一色（淺青 → 深藍），
+- 右下角「🌊 海底」開關；網址 `?seabed=1` / `?seabed=0`，垂直放大 `?seabedx=1..10`（預設 6）。
+- 10 m 格網（轉換時中位數降為 20 m）、約 0–25 m 深，每 1 m 一色（淺青 → 深藍）並加西北光源陰影（不透明），開海底時珊瑚改畫外框貼在海底上，右下角有圖例，
   放在 EGM96 平均海面以下，關閉深度測試以穿透 Google 3D 的不透明海面。
 - 資料取得（需免費帳號，**只能手動**）：
   1. https://allencoralatlas.org/atlas/ 登入 → My Areas → Upload `output/huckly-bathy/areas/<潛點>.geojson` → Save Area
